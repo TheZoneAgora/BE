@@ -1,4 +1,5 @@
 .env
+.deploy/
 .venv/
 .uv-cache/
 .uv-python/
