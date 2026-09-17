@@ -19,7 +19,7 @@ CREATE TABLE agents (
     updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
 
     CONSTRAINT agents_timeframe_check
-        CHECK (timeframe IN ('5m', '15m', '1h')),
+        CHECK (timeframe IN ('1m', '3m', '5m', '15m', '30m', '1h', '4h', '1d')),
 
     CONSTRAINT agents_max_position_check
         CHECK (max_position_bps BETWEEN 1 AND 5000),

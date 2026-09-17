@@ -64,7 +64,10 @@ curl -X POST http://150.230.200.147:8000/agents \
 
 주요 검증 규칙:
 
-- `timeframe`: `5m`, `15m`, `1h` 중 하나
+- `timeframe`: `1m`, `3m`, `5m`, `15m`, `30m`, `1h`, `4h`, `1d` 중 하나
+  - `m`: 분봉 (`1m`, `3m`, `5m`, `15m`, `30m`)
+  - `h`: 시간봉 (`1h` = 60분봉, `4h` = 4시간봉)
+  - `1d`: 일봉 (Daily)
 - `max_position_bps`: 1~5000
 - `max_order_bps`: 1~5000이며 `max_position_bps` 이하
 - `max_daily_loss_bps`: 1~3000

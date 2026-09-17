@@ -12,7 +12,7 @@ class AgentManifest(BaseModel):
     public_key: Annotated[str, Field(min_length=1, max_length=255)]
 
     strategy_version: Annotated[str, Field(min_length=1, max_length=50)]
-    timeframe: Literal["5m", "15m", "1h"]
+    timeframe: Literal["1m", "3m", "5m", "15m", "30m", "1h", "4h", "1d"]
 
     max_position_bps: Annotated[int, Field(ge=1, le=5000)]
     max_order_bps: Annotated[int, Field(ge=1, le=5000)]
