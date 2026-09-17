@@ -79,6 +79,25 @@ curl http://localhost:8000/health
 - Health check: `http://SERVER_PUBLIC_IP:8000/health`
 - Agent registration: `POST http://SERVER_PUBLIC_IP:8000/agents`
 
+## MVP backtests
+
+`POST /backtests` accepts an `agent_id`, one `symbol`, the agent's `timeframe`,
+the complete time-ordered `candles` array, `initial_cash`, `order_size_quote`,
+`fee_bps`, and `slippage_bps`. It persists a `PENDING` job, sends only its UUID
+through a durable Redis Stream, and responds with HTTP 202. Use
+`GET /backtests/{job_id}` to read status and results.
+
+`POST /backtests/{job_id}/rerun` accepts optional `fee_bps` and
+`slippage_bps`. It creates a new job that reuses the source signal set only when
+the agent/version/symbol/timeframe/OHLCV hash identity still matches.
+
+The simulator is single-symbol and long-only. Signals execute at the following
+candle's open. A BUY larger than available cash is reduced so principal plus
+exchange fee consumes at most the remaining cash; duplicate BUY and SELL without
+a position are ignored. SELL closes the full position. An open final position is
+marked at the final close without a forced trade. `trade_count` counts actual
+fills, and `total_costs` is `total_fees + total_slippage`.
+
 ### 5. Update
 
 ```bash
