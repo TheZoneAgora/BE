@@ -1,90 +1,147 @@
 # Agora Backend
 
-## API documentation
+에이전트 등록을 위한 FastAPI 백엔드입니다. FastAPI, PostgreSQL, Redis를 하나의 Docker Compose 구성으로 실행합니다.
 
-- Swagger UI: http://localhost:8000/docs
-- OpenAPI schema: http://localhost:8000/openapi.json
-- API base URL: http://localhost:8000
+## 배포 주소
 
-Docker Compose로 백엔드를 실행한 뒤 Swagger UI에서 API 명세를 확인하고 직접 요청을 테스트할 수 있습니다.
+현재 Oracle Cloud의 `agora-hackathon` 인스턴스에서 실행 중입니다.
 
-## Local run
+- API base URL: `http://150.230.200.147:8000`
+- Swagger UI: [http://150.230.200.147:8000/docs](http://150.230.200.147:8000/docs)
+- OpenAPI schema: [http://150.230.200.147:8000/openapi.json](http://150.230.200.147:8000/openapi.json)
+- Health check: [http://150.230.200.147:8000/health](http://150.230.200.147:8000/health)
+- Agent registration: `POST http://150.230.200.147:8000/agents`
+
+현재 해커톤 배포는 HTTP와 포트 `8000`을 사용합니다. PostgreSQL `5432`와 Redis `6379`는 외부에 공개하지 않습니다.
+
+## API
+
+### 상태 확인
 
 ```bash
+curl http://150.230.200.147:8000/health
+```
+
+정상 응답:
+
+```json
+{
+  "status": "ok",
+  "database": "ok"
+}
+```
+
+### 에이전트 등록
+
+`POST /agents`
+
+```bash
+curl -X POST http://150.230.200.147:8000/agents \
+  -H "Content-Type: application/json" \
+  -d '{
+    "name": "Momentum Agent",
+    "endpoint_url": "https://agent.example.com/decide",
+    "public_key": "0x1234567890abcdef",
+    "strategy_version": "1.0.0",
+    "timeframe": "5m",
+    "max_position_bps": 5000,
+    "max_order_bps": 2500,
+    "max_daily_loss_bps": 1000,
+    "allowed_symbols": ["SUI_USDC"]
+  }'
+```
+
+서버는 다음 정책을 고정해서 저장합니다. 클라이언트 요청에는 이 값을 넣지 않습니다.
+
+```json
+{
+  "min_trade_interval_bars": 1,
+  "allow_short": false,
+  "max_open_positions": 1,
+  "allowed_order_types": ["MARKET"]
+}
+```
+
+주요 검증 규칙:
+
+- `timeframe`: `5m`, `15m`, `1h` 중 하나
+- `max_position_bps`: 1~5000
+- `max_order_bps`: 1~5000이며 `max_position_bps` 이하
+- `max_daily_loss_bps`: 1~3000
+- `allowed_symbols`: 하나 이상이며 중복과 빈 문자열 불가
+- 동일한 `name`과 `strategy_version` 조합은 중복 등록 불가
+
+응답 상태:
+
+- `201 Created`: 등록 성공
+- `409 Conflict`: 같은 이름과 전략 버전이 이미 존재
+- `422 Unprocessable Entity`: 요청 형식 또는 값 검증 실패
+
+## 로컬 실행
+
+이 프로젝트는 개발용과 서버용 Compose 파일을 따로 두지 않습니다. 같은 `compose.yaml`을 사용하고 환경별 값만 `.env`에서 관리합니다.
+
+```bash
+cp .env.example .env
 docker compose up -d --build
 docker compose ps
+curl http://localhost:8000/health
 ```
 
-PostgreSQL과 Redis는 Docker 내부 네트워크에서만 접근할 수 있으며 FastAPI의 `${API_PORT:-8000}` 포트만 호스트에 공개됩니다.
+로컬 주소:
 
-## OCI hackathon deployment
+- Swagger UI: [http://localhost:8000/docs](http://localhost:8000/docs)
+- OpenAPI schema: [http://localhost:8000/openapi.json](http://localhost:8000/openapi.json)
+- Agent registration: `POST http://localhost:8000/agents`
 
-이 배포 절차는 Ubuntu 기반 OCI Compute 인스턴스를 기준으로 합니다.
-
-### 1. OCI network
-
-인스턴스가 사용하는 VCN Security List 또는 Network Security Group의 ingress에 TCP `8000`을 추가합니다. SSH 접속을 위한 TCP `22`도 필요합니다. PostgreSQL `5432`와 Redis `6379`는 열지 않습니다.
-
-### 2. Install Docker
-
-Docker 공식 Ubuntu 저장소에서 Docker Engine과 Compose 플러그인을 설치하고 서비스를 활성화합니다.
-
-```bash
-sudo systemctl enable --now docker
-docker version
-docker compose version
-```
-
-### 3. Clone and configure
-
-```bash
-git clone https://github.com/TheZoneAgora/BE.git
-cd BE
-cp .env.example .env
-```
-
-`.env`에서 `POSTGRES_PASSWORD`를 임의의 긴 비밀번호로 교체하고, 프론트엔드가 사용하는 origin에 맞춰 `CORS_ORIGINS`를 수정합니다. `/agora` 같은 URL 경로는 CORS origin에 포함하지 않습니다.
+기본 `.env` 형식:
 
 ```dotenv
 POSTGRES_DB=agora
 POSTGRES_USER=agora
 POSTGRES_PASSWORD=replace_with_a_long_random_password
 API_PORT=8000
-CORS_ORIGINS=["http://localhost:3000"]
+CORS_ORIGINS=["http://localhost:3000","http://127.0.0.1:3000"]
 ```
 
-환경 변수 파일은 소유자만 읽을 수 있도록 설정합니다.
+CORS에는 브라우저의 origin만 입력합니다. 예를 들어 `http://localhost:3000/agora`에서 요청하더라도 설정값은 경로를 제외한 `http://localhost:3000`입니다. 현재 CORS는 `POST` 요청과 `Content-Type` 헤더를 허용합니다.
+
+## Oracle Cloud 구성
+
+- Compute instance: `agora-hackathon`
+- Public IP: `150.230.200.147`
+- 공개 포트: TCP `22`, TCP `8000`
+- 내부 전용 포트: PostgreSQL `5432`, Redis `6379`
+- 컨테이너 재시작 정책: `unless-stopped`
+- PostgreSQL 데이터: Docker volume `postgres_data`
+- Redis 데이터: Docker volume `redis_data`
+- 메모리 보완: 2GB swap
+
+실행 컨테이너:
+
+- `agora-api`
+- `agora-postgres`
+- `agora-redis`
+
+## 서버 업데이트
+
+Oracle 서버에 SSH로 접속한 뒤 실행합니다.
 
 ```bash
-chmod 600 .env
-```
-
-### 4. Start and verify
-
-```bash
-docker compose up -d --build
-docker compose ps
+cd ~/BE
+git pull --ff-only
+sudo docker compose up -d --build
+sudo docker compose ps
 curl http://localhost:8000/health
 ```
 
-정상 응답은 다음과 같습니다.
-
-```json
-{"status":"ok","database":"ok"}
-```
-
-외부에서는 다음 주소를 사용합니다.
-
-- Swagger UI: `http://SERVER_PUBLIC_IP:8000/docs`
-- Health check: `http://SERVER_PUBLIC_IP:8000/health`
-- Agent registration: `POST http://SERVER_PUBLIC_IP:8000/agents`
-
-### 5. Update
+로그 확인:
 
 ```bash
-git pull --ff-only
-docker compose up -d --build
-docker compose ps
+cd ~/BE
+sudo docker compose logs --tail=100 api
+sudo docker compose logs --tail=100 postgres
+sudo docker compose logs --tail=100 redis
 ```
 
-`restart: unless-stopped`가 모든 서비스에 적용되어 있어 Docker와 서버가 재시작된 뒤 컨테이너도 다시 실행됩니다.
+서버의 `.env`와 로컬 SSH 키는 Git에 포함되지 않습니다.
