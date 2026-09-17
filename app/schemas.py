@@ -1,5 +1,6 @@
-from datetime import datetime
-from typing import Annotated, Literal, Self
+from datetime import UTC, datetime
+from decimal import Decimal
+from typing import Annotated, Any, Literal, Self
 
 from pydantic import AnyHttpUrl, BaseModel, ConfigDict, Field, field_validator, model_validator
 
@@ -64,3 +65,44 @@ class AgentRead(BaseModel):
     status: str
     created_at: datetime
     updated_at: datetime
+
+
+class SignalCreate(BaseModel):
+    model_config = ConfigDict(extra="forbid", str_strip_whitespace=True)
+
+    agent_id: Annotated[int, Field(gt=0)]
+    signal_id: Annotated[str, Field(min_length=1, max_length=255)]
+    symbol: Annotated[str, Field(min_length=1, max_length=50)]
+    action: Literal["BUY", "SELL", "HOLD", "CLOSE"]
+    generated_at: datetime
+    price: Annotated[Decimal | None, Field(gt=0)] = None
+    confidence: Annotated[Decimal | None, Field(ge=0, le=1)] = None
+    raw_payload: dict[str, Any] = Field(default_factory=dict)
+
+    @field_validator("symbol", "action", mode="before")
+    @classmethod
+    def normalize_uppercase(cls, value: object) -> object:
+        return value.upper() if isinstance(value, str) else value
+
+    @field_validator("generated_at")
+    @classmethod
+    def require_timezone(cls, value: datetime) -> datetime:
+        if value.tzinfo is None or value.utcoffset() is None:
+            raise ValueError("generated_at must include a timezone offset")
+        return value.astimezone(UTC)
+
+
+class SignalRead(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: int
+    agent_id: int
+    signal_id: str
+    symbol: str
+    timeframe: str
+    action: str
+    generated_at: datetime
+    received_at: datetime
+    price: Decimal | None
+    confidence: Decimal | None
+    raw_payload: dict[str, Any]

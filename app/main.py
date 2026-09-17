@@ -9,6 +9,7 @@ from sqlalchemy.exc import SQLAlchemyError
 from app.config import get_settings
 from app.database import close_database, engine
 from app.routes.agents import router as agents_router
+from app.routes.signals import router as signals_router
 
 
 @asynccontextmanager
@@ -22,10 +23,11 @@ app = FastAPI(title=settings.app_name, lifespan=lifespan)
 app.add_middleware(
     CORSMiddleware,
     allow_origins=settings.cors_origins,
-    allow_methods=["POST"],
+    allow_methods=["GET", "POST"],
     allow_headers=["Content-Type"],
 )
 app.include_router(agents_router)
+app.include_router(signals_router)
 
 
 @app.get("/health")

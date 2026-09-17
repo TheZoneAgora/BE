@@ -11,6 +11,8 @@
 - OpenAPI schema: [http://150.230.200.147:8000/openapi.json](http://150.230.200.147:8000/openapi.json)
 - Health check: [http://150.230.200.147:8000/health](http://150.230.200.147:8000/health)
 - Agent registration: `POST http://150.230.200.147:8000/agents`
+- Signal ingestion: `POST http://150.230.200.147:8000/signals`
+- Signal history: `GET http://150.230.200.147:8000/signals`
 
 현재 해커톤 배포는 HTTP와 포트 `8000`을 사용합니다. PostgreSQL `5432`와 Redis `6379`는 외부에 공개하지 않습니다.
 
@@ -80,6 +82,60 @@ curl -X POST http://150.230.200.147:8000/agents \
 - `409 Conflict`: 같은 이름과 전략 버전이 이미 존재
 - `422 Unprocessable Entity`: 요청 형식 또는 값 검증 실패
 
+### 매매 시그널 저장
+
+`POST /signals`
+
+등록된 ACTIVE 에이전트가 생성한 시그널을 저장합니다. `signal_id`는 에이전트가
+발급하는 고유 ID이며, 같은 에이전트에서 재사용할 수 없습니다. `generated_at`에는
+반드시 타임존을 포함해야 합니다. 서버는 에이전트 등록 당시의 `timeframe`과 실제
+수신 시각인 `received_at`을 함께 저장합니다.
+
+```bash
+curl -X POST http://150.230.200.147:8000/signals \
+  -H "Content-Type: application/json" \
+  -d '{
+    "agent_id": 1,
+    "signal_id": "momentum-20260917-0001",
+    "symbol": "SUI_USDC",
+    "action": "BUY",
+    "generated_at": "2026-09-17T09:30:00+09:00",
+    "price": "3.450000000000000000",
+    "confidence": "0.875",
+    "raw_payload": {
+      "reason": "fast_ma_crossed_above_slow_ma"
+    }
+  }'
+```
+
+주요 검증 규칙:
+
+- `agent_id`: 등록되어 있고 상태가 `ACTIVE`인 에이전트
+- `signal_id`: 에이전트별 고유 값
+- `symbol`: 해당 에이전트의 `allowed_symbols`에 등록된 종목
+- `action`: `BUY`, `SELL`, `HOLD`, `CLOSE` 중 하나
+- `generated_at`: 타임존 오프셋이 포함된 시그널 발생 시각
+- `price`: 선택 값이며 입력 시 0보다 큰 값
+- `confidence`: 선택 값이며 0~1 사이 값
+- `raw_payload`: 향후 전략별 필드를 보존하기 위한 JSON 객체
+
+응답 상태:
+
+- `201 Created`: 저장 성공
+- `404 Not Found`: 에이전트가 존재하지 않음
+- `409 Conflict`: 비활성 에이전트 또는 중복 `signal_id`
+- `422 Unprocessable Entity`: 요청 형식, 종목 또는 값 검증 실패
+
+### 매매 시그널 조회
+
+`GET /signals`는 백테스트 및 라이브 테스트가 저장된 시그널을 시간순으로 조회할 때
+사용합니다. `agent_id`, `symbol`, `start_at`, `end_at`, `order`, `limit`으로 필터링할
+수 있으며 기본 정렬은 시그널 발생 시각 오름차순입니다.
+
+```bash
+curl "http://150.230.200.147:8000/signals?agent_id=1&symbol=SUI_USDC&order=asc&limit=500"
+```
+
 ## 로컬 실행
 
 이 프로젝트는 개발용과 서버용 Compose 파일을 따로 두지 않습니다. 같은 `compose.yaml`을 사용하고 환경별 값만 `.env`에서 관리합니다.
@@ -96,6 +152,8 @@ curl http://localhost:8000/health
 - Swagger UI: [http://localhost:8000/docs](http://localhost:8000/docs)
 - OpenAPI schema: [http://localhost:8000/openapi.json](http://localhost:8000/openapi.json)
 - Agent registration: `POST http://localhost:8000/agents`
+- Signal ingestion: `POST http://localhost:8000/signals`
+- Signal history: `GET http://localhost:8000/signals`
 
 기본 `.env` 형식:
 
@@ -107,7 +165,16 @@ API_PORT=8000
 CORS_ORIGINS=["http://localhost:3000","http://127.0.0.1:3000"]
 ```
 
-CORS에는 브라우저의 origin만 입력합니다. 예를 들어 `http://localhost:3000/agora`에서 요청하더라도 설정값은 경로를 제외한 `http://localhost:3000`입니다. 현재 CORS는 `POST` 요청과 `Content-Type` 헤더를 허용합니다.
+CORS에는 브라우저의 origin만 입력합니다. 예를 들어 `http://localhost:3000/agora`에서 요청하더라도 설정값은 경로를 제외한 `http://localhost:3000`입니다. 현재 CORS는 `GET`, `POST` 요청과 `Content-Type` 헤더를 허용합니다.
+
+기존 PostgreSQL 볼륨에 시그널 테이블을 추가하려면 배포 전에 마이그레이션 SQL을
+한 번 실행합니다. 새 볼륨에서는 Docker 초기화 과정에서 자동 실행됩니다.
+
+```bash
+sudo docker compose exec -T postgres \
+  psql -U "$POSTGRES_USER" -d "$POSTGRES_DB" \
+  < db/init/004_create_signals.sql
+```
 
 ## Oracle Cloud 구성
 
