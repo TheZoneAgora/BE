@@ -8,6 +8,12 @@ class Settings(BaseSettings):
     database_url: str = (
         "postgresql+asyncpg://agora:agora_dev_password@localhost:5432/agora"
     )
+    redis_url: str = "redis://localhost:6379/0"
+    backtest_stream: str = "backtest_jobs"
+    backtest_consumer_group: str = "backtest_workers"
+    backtest_consumer_name: str = "backtest-worker-1"
+    backtest_worker_stale_seconds: int = 120
+    agent_backtest_timeout_seconds: float = 60.0
     cors_origins: list[str] = [
         "http://localhost:3000",
         "http://127.0.0.1:3000",

@@ -7,11 +7,14 @@ services:
     restart: unless-stopped
     environment:
       DATABASE_URL: postgresql+asyncpg://${POSTGRES_USER:-agora}:${POSTGRES_PASSWORD:-agora_dev_password}@postgres:5432/${POSTGRES_DB:-agora}
+      REDIS_URL: redis://redis:6379/0
       CORS_ORIGINS: '${CORS_ORIGINS:-["http://localhost:3000","http://127.0.0.1:3000"]}'
     ports:
       - "${API_PORT:-8000}:8000"
     depends_on:
       postgres:
+        condition: service_healthy
+      redis:
         condition: service_healthy
     healthcheck:
       test:
@@ -23,6 +26,23 @@ services:
       timeout: 5s
       retries: 5
       start_period: 10s
+
+  backtest-worker:
+    build: .
+    container_name: agora-backtest-worker
+    restart: unless-stopped
+    command: ["python", "-m", "app.worker.backtest_worker"]
+    environment:
+      DATABASE_URL: postgresql+asyncpg://${POSTGRES_USER:-agora}:${POSTGRES_PASSWORD:-agora_dev_password}@postgres:5432/${POSTGRES_DB:-agora}
+      REDIS_URL: redis://redis:6379/0
+      BACKTEST_CONSUMER_NAME: ${BACKTEST_CONSUMER_NAME:-backtest-worker-1}
+      BACKTEST_WORKER_STALE_SECONDS: ${BACKTEST_WORKER_STALE_SECONDS:-120}
+      AGENT_BACKTEST_TIMEOUT_SECONDS: ${AGENT_BACKTEST_TIMEOUT_SECONDS:-60}
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
 
   postgres:
     image: postgres:16-alpine
